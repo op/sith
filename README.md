@@ -15,4 +15,5 @@ latest version of libspotify to your system.
 
 For now you will need to specify the password through the command line.
 
-    $ go run sith.go -key path/app.key -username user -password pass
+    $ go install github.com/op/sith
+    $ sith -key path/app.key -username user -password pass
