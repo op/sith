@@ -1,0 +1,26 @@
+<div ng-controller="SearchCtrl">
+  <form>
+  <label>search</label>
+  <input type="text" required ng-model="query" ng-change="search()" ng-minlength="1" ng-maxlength="256" placeholder="Search query" />
+  </form>
+  <hr>
+  <h1>Searching {{query}}!</h1>
+  <h3>artists</h3>
+  <ul>
+    <li ng-repeat="artist in artists">
+    <p>{{artist.name}}</p>
+    </li>
+  </ul>
+  <h3>albums</h3>
+  <ul>
+    <li ng-repeat="album in albums">
+    <p>{{album.name}}</p>
+    </li>
+  </ul>
+  <h3>tracks</h3>
+  <ul>
+    <li ng-repeat="track in tracks">
+    <p>{{track.name}}</p>
+    </li>
+  </ul>
+</div>
