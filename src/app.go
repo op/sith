@@ -16,10 +16,12 @@ package sith
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	sp "github.com/op/go-libspotify"
+	"github.com/op/go-logging"
 )
 
 // api is the peripheral between the router and libspotify. Some methods are
@@ -130,8 +132,7 @@ func (a *api) events() {
 				return
 			}
 		case message := <-a.sess.LogMessages():
-			// TODO parse message to figure out log level to use
-			log.Debug("%s", message)
+			a.log(message)
 		case <-time.After(200 * time.Millisecond):
 			select {
 			case <-a.exit:
@@ -139,6 +140,37 @@ func (a *api) events() {
 			default:
 			}
 		}
+	}
+}
+
+func (a *api) log(m *sp.LogMessage) {
+	var (
+		fmt  = "%s"
+		args = []interface{}{m.Message}
+	)
+
+	// Split away the line number from the module. Not very interesting.
+	var module = m.Module
+	s := strings.SplitN(module, ":", 2)
+	if len(s) == 2 {
+		module = s[0]
+	}
+
+	logger := logging.MustGetLogger(module)
+
+	switch m.Level {
+	case sp.LogFatal:
+		logger.Critical(fmt, args...)
+	case sp.LogError:
+		logger.Error(fmt, args...)
+	case sp.LogWarning:
+		logger.Warning(fmt, args...)
+	case sp.LogInfo:
+		logger.Info(fmt, args...)
+	case sp.LogDebug:
+		logger.Debug(fmt, args...)
+	default:
+		panic("unhandled log level")
 	}
 }
 
