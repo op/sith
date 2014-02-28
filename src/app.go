@@ -21,12 +21,12 @@ import (
 	"time"
 
 	"github.com/martini-contrib/encoder"
-	sp "github.com/op/go-libspotify/spotify"
 	"github.com/op/go-logging"
+	"github.com/op/go-libspotify/spotify"
 )
 
 type bridge struct {
-	sess *sp.Session
+	sess *spotify.Session
 
 	mu      sync.RWMutex
 	cond    *sync.Cond
@@ -34,7 +34,7 @@ type bridge struct {
 	exit    chan struct{}
 }
 
-func newBridge(session *sp.Session) *bridge {
+func newBridge(session *spotify.Session) *bridge {
 	b := &bridge{
 		sess: session,
 	}
@@ -107,7 +107,7 @@ func (b *bridge) events() {
 	}
 }
 
-func (b *bridge) log(m *sp.LogMessage) {
+func (b *bridge) log(m *spotify.LogMessage) {
 	var (
 		fmt  = "%s"
 		args = []interface{}{m.Message}
@@ -123,15 +123,15 @@ func (b *bridge) log(m *sp.LogMessage) {
 	logger := logging.MustGetLogger(module)
 
 	switch m.Level {
-	case sp.LogFatal:
+	case spotify.LogFatal:
 		logger.Critical(fmt, args...)
-	case sp.LogError:
+	case spotify.LogError:
 		logger.Error(fmt, args...)
-	case sp.LogWarning:
+	case spotify.LogWarning:
 		logger.Warning(fmt, args...)
-	case sp.LogInfo:
+	case spotify.LogInfo:
 		logger.Info(fmt, args...)
-	case sp.LogDebug:
+	case spotify.LogDebug:
 		logger.Debug(fmt, args...)
 	default:
 		panic("unhandled log level")
@@ -143,7 +143,7 @@ type Track struct {
 	Name string `json:"name"`
 }
 
-func newTrack(t *sp.Track) *Track {
+func newTrack(t *spotify.Track) *Track {
 	return &Track{t.Link().String(), t.Name()}
 }
 
@@ -152,7 +152,7 @@ type Album struct {
 	Name string `json:"name"`
 }
 
-func newAlbum(a *sp.Album) *Album {
+func newAlbum(a *spotify.Album) *Album {
 	return &Album{a.Link().String(), a.Name()}
 }
 
@@ -161,7 +161,7 @@ type Artist struct {
 	Name string `json:"name"`
 }
 
-func newArtist(a *sp.Artist) *Artist {
+func newArtist(a *spotify.Artist) *Artist {
 	return &Artist{a.Link().String(), a.Name()}
 }
 
@@ -196,8 +196,8 @@ func (a *application) search(bridge *bridge, enc encoder.Encoder, req *http.Requ
 	albums := true
 	tracks := true
 
-	spec := sp.SearchSpec{offset, limit}
-	opts := sp.SearchOptions{}
+	spec := spotify.SearchSpec{args.Offset(), args.Limit}
+	opts := spotify.SearchOptions{}
 	if artists {
 		opts.Artists = spec
 	}
