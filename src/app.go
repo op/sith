@@ -20,9 +20,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/encoder"
-	"github.com/op/go-logging"
 	"github.com/op/go-libspotify/spotify"
+	"github.com/op/go-logging"
 )
 
 type bridge struct {
@@ -174,22 +175,37 @@ type SearchResult struct {
 type application struct {
 }
 
+type paginationArgs struct {
+	Page  int `form:"page" json:"page"`
+	Limit int `form:"limit" json:"limit"`
+}
+
+func (pa *paginationArgs) Offset() int {
+	return (pa.Page - 1) * pa.Limit
+}
+
+func (pa *paginationArgs) Validate(errors *binding.Errors, req *http.Request) {
+	if pa.Page <= 0 {
+		pa.Page = 1
+	}
+	if pa.Limit <= 0 {
+		pa.Limit = 10
+	}
+}
+
+type searchArgs struct {
+	paginationArgs
+	Query string `form:"query" json:"query" binding:"required"`
+}
+
 // search queries the Spotify catalogue with the given query.
-func (a *application) search(bridge *bridge, enc encoder.Encoder, req *http.Request) (int, []byte) {
+func (a *application) search(bridge *bridge, enc encoder.Encoder, args searchArgs) (int, []byte) {
 	// requiredScopes := &scopes{search: true}
 	// if err := s.requireScopes(requiredScopes); err != nil {
 	// 	return nil, err
 	// }
 
 	bridge.sync()
-
-	// TODO validate input
-	query := req.FormValue("query")
-
-	// TODO generalize paging
-	page := 1
-	limit := 10
-	offset := (page - 1) * limit
 
 	// TODO make options
 	artists := true
@@ -208,8 +224,8 @@ func (a *application) search(bridge *bridge, enc encoder.Encoder, req *http.Requ
 		opts.Tracks = spec
 	}
 
-	log.Debug("Searching %s...", query)
-	search, err := bridge.sess.Search(query, &opts)
+	log.Debug("Searching %s...", args.Query)
+	search, err := bridge.sess.Search(args.Query, &opts)
 	if err != nil {
 		// TODO serialize pretty error
 		log.Info(err.Error())

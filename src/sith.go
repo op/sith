@@ -26,6 +26,7 @@ import (
 	"runtime"
 
 	"github.com/codegangsta/martini"
+	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/encoder"
 	"github.com/op/go-libspotify/spotify"
 	"github.com/op/go-logging"
@@ -71,7 +72,7 @@ func Run() {
 
 	// Exposed API methods
 	router := martini.NewRouter()
-	router.Get("/search", app.search)
+	router.Get("/search", binding.Bind(searchArgs{}), app.search)
 	m.Action(router.Handle)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *port)
