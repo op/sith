@@ -18,8 +18,9 @@ import (
 	"net/http"
 )
 
+// TODO these are no longer used, but should be..
 // apiError is the internal struct used to represent expected and handled
-// errors and implements both the reply and error interface.
+// errors.
 type apiError struct {
 	status int
 

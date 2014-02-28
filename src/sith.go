@@ -16,8 +16,6 @@
 package sith
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -26,12 +24,10 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strings"
 
-	"github.com/ngmoco/falcore"
-	"github.com/ngmoco/falcore/compression"
-	"github.com/ngmoco/falcore/static_file"
-	"github.com/op/go-libspotify"
+	"github.com/codegangsta/martini"
+	"github.com/martini-contrib/encoder"
+	"github.com/op/go-libspotify/spotify"
 	"github.com/op/go-logging"
 )
 
@@ -53,37 +49,40 @@ func Run() {
 	flag.Parse()
 	setupLogging()
 
-	auth := newAuth()
-	api := newApi(auth, newSession())
+	// TODO there's a limitation with libspotify, we can only have one logged in
+	//      user per process. maybe we should create a layer that spawns a new
+	//      process for each session required and have a small layer between?
+	//      that's why this is currently called a bridge. it doesn't do much
+	//      right now.
+	bridge := newBridge(newSession())
+	app := &application{}
 
 	root := resourcePath()
-	router := falcore.NewPathRouter()
-	router.AddMatch(`^/$`, &static_file.Filter{
-		BasePath:   filepath.Join(root, "html", "index.html"),
-		PathPrefix: "/",
+
+	m := martini.New()
+	m.Use(martini.Static(
+		filepath.Join(root, "html"),
+	))
+	m.Use(func(c martini.Context, w http.ResponseWriter) {
+		c.MapTo(encoder.JsonEncoder{}, (*encoder.Encoder)(nil))
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	})
-	router.AddMatch(`^/s/`, &static_file.Filter{
-		BasePath:   filepath.Join(root, "html"),
-		PathPrefix: "/s",
-	})
-	router.AddMatch(`^/search$`, apiRequest(api, func(req *falcore.Request) (reply, error) {
-		return api.session(req.HttpRequest).search(req.HttpRequest)
-	}))
+	m.Map(bridge)
 
-	pipeline := falcore.NewPipeline()
-	pipeline.RequestDoneCallback = falcore.NewRequestFilter(
-		func(req *falcore.Request) *http.Response {
-			req.Trace()
-			return nil
-		},
-	)
-	pipeline.Upstream.PushBack(router)
-	pipeline.Downstream.PushBack(compression.NewFilter(nil))
+	// Exposed API methods
+	router := martini.NewRouter()
+	router.Get("/search", app.search)
+	m.Action(router.Handle)
 
-	server := falcore.NewServer(*port, pipeline)
-	server.Addr = fmt.Sprintf("127.0.0.1:%d", *port)
+	addr := fmt.Sprintf("127.0.0.1:%d", *port)
+	log.Info("Starting up HTTP interface at %s", addr)
+	server := http.Server{
+		Addr:    addr,
+		Handler: m,
+	}
+	server.ListenAndServe()
 
-	go signalHandler(api, server)
+	// go signalHandler(api, server)
 
 	// TODO add and try to enforce use of TLS
 	log.Debug("Starting up HTTP interface on %d", *port)
@@ -98,17 +97,16 @@ func setupLogging() {
 
 	logging.SetFormatter(logging.MustStringFormatter("%{time:2006-01-02T15:04:05.000} %{module} %{message}"))
 	logging.SetBackend(logBackend)
-	falcore.SetLogger(&FalcoreLogger{logging.MustGetLogger("falcor")})
 }
 
-func signalHandler(api *api, server *falcore.Server) {
+func signalHandler(bridge *bridge, server *http.Server) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, os.Kill)
 	for {
 		select {
 		case <-signals:
-			server.StopAccepting()
-			api.Stop()
+			// server.StopAccepting()
+			bridge.Stop()
 			return
 		}
 	}
@@ -132,27 +130,6 @@ func resourcePath() string {
 		panic(err)
 	}
 	return dir
-}
-
-// getRelativePathToBin returns the relative path from the package directory to
-// the current executed binary.
-func getRelativePathToBin(root string) string {
-	bin, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		panic(err)
-	}
-	// FIXME very go version specific and will break
-	if strings.Contains(bin, filepath.Join(".", "go-build")[1:]) {
-		bin, err = filepath.Abs(filepath.Dir(flag.Arg(0)))
-		if err != nil {
-			panic(err)
-		}
-	}
-	var rel string
-	if rel, err = filepath.Rel(bin, root); err != nil {
-		panic(err)
-	}
-	return rel
 }
 
 // newSession creates a new libspotify session.
@@ -180,78 +157,4 @@ func newSession() *spotify.Session {
 		log.Fatal(err)
 	}
 	return session
-}
-
-// reply is the interface required to create the API response. We expose
-// this as an interface to unify how success and errors are treated.
-type reply interface {
-	Data() interface{}
-	StatusCode() int
-}
-
-type apiReply struct {
-	status int
-	data   interface{}
-}
-
-func (r *apiReply) Data() interface{} {
-	return r.data
-}
-
-func (r *apiReply) StatusCode() int {
-	if r.status == 0 {
-		return 200
-	}
-	return r.status
-}
-
-// apiRequest returns a decorated falcore.RequestFilter which will
-// automatically adapt the reply or error to a JSON response.
-
-// Return detailed errors only when the error implements the reply
-// interface. Details are not leaked for unhandled errors.
-func apiRequest(api *api, handler func(*falcore.Request) (reply, error)) falcore.RequestFilter {
-	return falcore.NewRequestFilter(func(req *falcore.Request) *http.Response {
-		// api.begin()
-		// defer api.done()
-		rep, err := handler(req)
-		if err != nil {
-			var ok bool
-			if rep, ok = err.(reply); !ok {
-				rep = newInternalServerError("unhandled error")
-				log.Error(err.Error())
-			} else {
-				log.Warning(err.Error())
-			}
-		}
-		return jsonResponse(req, rep)
-	})
-}
-
-// jsonResponse converts a reply to JSON and sets the HTTP response up.
-func jsonResponse(req *falcore.Request, rep reply) *http.Response {
-	headers := make(http.Header)
-	headers.Add("Content-Type", "application/json")
-
-	// TODO add support for JSONP
-	var encoded bytes.Buffer
-	enc := json.NewEncoder(&encoded)
-
-	// TODO handle errors in falcore
-	if err := enc.Encode(rep.Data()); err != nil {
-		panic(err)
-	}
-
-	var indented bytes.Buffer
-	if err := json.Indent(&indented, encoded.Bytes(), "", "    "); err != nil {
-		panic(err)
-	}
-	body := indented.String()
-
-	return falcore.SimpleResponse(
-		req.HttpRequest,
-		rep.StatusCode(),
-		headers,
-		body,
-	)
 }

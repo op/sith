@@ -20,14 +20,12 @@ import (
 	"sync"
 	"time"
 
-	sp "github.com/op/go-libspotify"
+	"github.com/martini-contrib/encoder"
+	sp "github.com/op/go-libspotify/spotify"
 	"github.com/op/go-logging"
 )
 
-// api is the peripheral between the router and libspotify. Some methods are
-// exposed directly, and some are hidden behind an authorization context.
-type api struct {
-	au   *auth
+type bridge struct {
 	sess *sp.Session
 
 	mu      sync.RWMutex
@@ -36,106 +34,72 @@ type api struct {
 	exit    chan struct{}
 }
 
-func newApi(auth *auth, session *sp.Session) *api {
-	a := &api{
-		au:   auth,
+func newBridge(session *sp.Session) *bridge {
+	b := &bridge{
 		sess: session,
 	}
-	a.cond = sync.NewCond(a.mu.RLocker())
-	go a.events()
-	return a
-}
-
-// auth returns an authorization context.
-func (a *api) auth(req *http.Request) *authContext {
-	var ctx *authContext
-
-	// TODO when adding support for logout/login, make sure no other requests
-	//      are outstanding and execute the login alone
-	oauth_token := req.FormValue("oauth_token")
-
-	// TODO verify token
-	// TODO setup context from token
-	if oauth_token == "xxx" {
-		ctx = &authContext{}
-		ctx.scopes.search = true
-	}
-
-	return ctx
-}
-
-// session returns a session context which indicates that if the requesting
-// user has access to the Spotify session we currently have. If there's no
-// Spotify session available, these calls will wait until one is available.
-func (a *api) session(req *http.Request) *sessionContext {
-	ctx := a.auth(req)
-
-	// TODO wait with timeout and not indefinitley
-	a.sync()
-
-	// TODO verify that the token user have permission to the logged in
-	//      user in libspotify
-
-	return &sessionContext{ctx, a.sess}
+	b.cond = sync.NewCond(b.mu.RLocker())
+	go b.events()
+	return b
 }
 
 // sync tries to synchronize any call to first make sure we have a working
 // session object to the Spotify backend.
-func (a *api) sync() {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	for !a.running {
-		a.cond.Wait()
+func (b *bridge) sync() {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	for !b.running {
+		b.cond.Wait()
 	}
 }
 
 // freeze marks the session as not beeing available for the moment.
-func (a *api) freeze() {
+func (b *bridge) freeze() {
 	log.Debug("Freezing...")
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.running = false
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.running = false
 	log.Debug("Frozen.")
 }
 
 // thaw unfreezes the session and makes it available again.
-func (a *api) thaw() {
+func (b *bridge) thaw() {
 	log.Debug("Thawing...")
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.running = true
-	a.cond.Broadcast()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.running = true
+	b.cond.Broadcast()
 	log.Debug("Thawed.")
 }
 
-func (a *api) Stop() {
-	a.sess.Logout()
-	a.exit <- struct{}{}
+func (b *bridge) Stop() {
+	b.sess.Logout()
+	b.exit <- struct{}{}
 }
 
-func (a *api) events() {
+func (b *bridge) events() {
 	var stopping bool
 
 	for {
 		select {
-		case err := <-a.sess.LoginUpdates():
+		case err := <-b.sess.LoginUpdates():
 			time.Sleep(2 * time.Second)
-			a.thaw()
+			b.thaw()
 			if err != nil {
 				log.Error("Login? %s", err)
 			}
 			log.Info("Interface now available at http://localhost:%d/", *port)
-		case <-a.sess.LogoutUpdates():
-			a.freeze()
+		case <-b.sess.LogoutUpdates():
+			b.freeze()
 			log.Warning("Logged out. Interface thawed.")
 			if stopping {
 				return
 			}
-		case message := <-a.sess.LogMessages():
-			a.log(message)
+		case message := <-b.sess.LogMessages():
+			b.log(message)
 		case <-time.After(200 * time.Millisecond):
 			select {
-			case <-a.exit:
+			case <-b.exit:
 				stopping = true
 			default:
 			}
@@ -143,7 +107,7 @@ func (a *api) events() {
 	}
 }
 
-func (a *api) log(m *sp.LogMessage) {
+func (b *bridge) log(m *sp.LogMessage) {
 	var (
 		fmt  = "%s"
 		args = []interface{}{m.Message}
@@ -172,24 +136,6 @@ func (a *api) log(m *sp.LogMessage) {
 	default:
 		panic("unhandled log level")
 	}
-}
-
-// authContext is an authorized session to the web application.
-type authContext struct {
-	scopes scopes
-}
-
-func (a *authContext) requireScopes(s *scopes) error {
-	if a == nil {
-		// TODO make 401 or 403, depending on auth error
-		err := newUnauthorizedError("authorization required")
-		err.Param = "oauth_token"
-		return err
-	}
-	if s.search && !a.scopes.search {
-		return newForbiddenError("insufficient scope")
-	}
-	return nil
 }
 
 type Track struct {
@@ -225,19 +171,17 @@ type SearchResult struct {
 	Tracks  []*Track  `json:"tracks"`
 }
 
-// sessionContext represents a fully logged in Spotify session in libspotify
-// and that the requester have access to the session.
-type sessionContext struct {
-	*authContext
-	sess *sp.Session
+type application struct {
 }
 
 // search queries the Spotify catalogue with the given query.
-func (s *sessionContext) search(req *http.Request) (reply, error) {
-	requiredScopes := &scopes{search: true}
-	if err := s.requireScopes(requiredScopes); err != nil {
-		return nil, err
-	}
+func (a *application) search(bridge *bridge, enc encoder.Encoder, req *http.Request) (int, []byte) {
+	// requiredScopes := &scopes{search: true}
+	// if err := s.requireScopes(requiredScopes); err != nil {
+	// 	return nil, err
+	// }
+
+	bridge.sync()
 
 	// TODO validate input
 	query := req.FormValue("query")
@@ -265,9 +209,11 @@ func (s *sessionContext) search(req *http.Request) (reply, error) {
 	}
 
 	log.Debug("Searching %s...", query)
-	search, err := s.sess.Search(query, &opts)
+	search, err := bridge.sess.Search(query, &opts)
 	if err != nil {
-		return nil, err
+		// TODO serialize pretty error
+		log.Info(err.Error())
+		return http.StatusInternalServerError, nil
 	}
 	search.Wait()
 
@@ -296,5 +242,6 @@ func (s *sessionContext) search(req *http.Request) (reply, error) {
 			result.Tracks = append(result.Tracks, newTrack(track))
 		}
 	}
-	return &apiReply{200, &result}, nil
+
+	return http.StatusOK, encoder.Must(enc.Encode(result))
 }
