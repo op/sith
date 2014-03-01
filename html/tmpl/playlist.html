@@ -1,0 +1,9 @@
+<div ng-controller="PlaylistCtrl">
+  <h1>playlist {{playlist.name}}</h1>
+  <hr>
+  <ol>
+    <li ng-repeat="track in playlist.tracks">
+    <p>{{track.name}}</p>
+    </li>
+  </ol>
+</div>

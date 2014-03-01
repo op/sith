@@ -15,11 +15,13 @@
 package sith
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/codegangsta/martini"
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/encoder"
 	"github.com/op/go-libspotify/spotify"
@@ -166,6 +168,60 @@ func newArtist(a *spotify.Artist) *Artist {
 	return &Artist{a.Link().String(), a.Name()}
 }
 
+type Playlist struct {
+	Id     string           `json:"id"`
+	Uri    string           `json:"uri"`
+	Name   string           `json:"name"`
+	Owner  string           `json:"owner"`
+	Tracks []*PlaylistTrack `json:"tracks"`
+}
+
+type PlaylistTrack struct {
+	Uri  string `json:"uri"`
+	Name string `json:"name"`
+	User string `json:"user"`
+	Time string `json:"time"`
+}
+
+func timeStr(t time.Time) string {
+	return t.Format("2006-01-02T03:04:05Z")
+}
+
+func newPlaylistTrack(pt *spotify.PlaylistTrack) *PlaylistTrack {
+	t := pt.Track()
+	return &PlaylistTrack{
+		t.Link().String(),
+		t.Name(),
+		pt.User().CanonicalName(),
+		timeStr(pt.Time()),
+	}
+}
+
+func newPlaylist(p *spotify.Playlist) *Playlist {
+	// TODO do this in javascript, don't expose the "id"
+	uri := p.Link().String()
+	id := uri[strings.LastIndex(uri, ":")+1:]
+
+	// TODO handle error
+	owner, _ := p.Owner()
+
+	return &Playlist{
+		id,
+		p.Link().String(),
+		p.Name(),
+		owner.CanonicalName(),
+		nil,
+	}
+}
+
+type PlaylistResult struct {
+	Playlist *Playlist `json:"playlist"`
+}
+
+type PlaylistsResult struct {
+	Playlists []*Playlist `json:"playlists"`
+}
+
 type SearchResult struct {
 	Artists []*Artist `json:"artists"`
 	Albums  []*Album  `json:"albums"`
@@ -175,27 +231,39 @@ type SearchResult struct {
 type application struct {
 }
 
-type paginationArgs struct {
-	Page  int `form:"page" json:"page"`
-	Limit int `form:"limit" json:"limit"`
-}
-
-func (pa *paginationArgs) Offset() int {
-	return (pa.Page - 1) * pa.Limit
-}
-
-func (pa *paginationArgs) Validate(errors *binding.Errors, req *http.Request) {
-	if pa.Page <= 0 {
-		pa.Page = 1
-	}
-	if pa.Limit <= 0 {
-		pa.Limit = 10
-	}
-}
-
 type searchArgs struct {
-	paginationArgs
-	Query string `form:"query" json:"query" binding:"required"`
+	RawPage  int    `form:"page" json:"page"`
+	RawLimit int    `form:"limit" json:"limit"`
+	Query    string `form:"query" json:"query" binding:"required"`
+}
+
+func (sa searchArgs) Validate(errors *binding.Errors, req *http.Request) {
+	if sa.RawPage < 0 {
+		// TODO
+	}
+
+	if sa.RawLimit < 0 {
+		// TODO
+	}
+	fmt.Println("limit", sa.Limit())
+}
+
+func (sa searchArgs) Page() int {
+	if sa.RawPage == 0 {
+		return 1
+	}
+	return sa.RawPage
+}
+
+func (sa searchArgs) Limit() int {
+	if sa.RawLimit == 0 {
+		return 10
+	}
+	return sa.RawLimit
+}
+
+func (sa searchArgs) Offset() int {
+	return (sa.Page() - 1) * sa.Limit()
 }
 
 // search queries the Spotify catalogue with the given query.
@@ -212,7 +280,7 @@ func (a *application) search(bridge *bridge, enc encoder.Encoder, args searchArg
 	albums := true
 	tracks := true
 
-	spec := spotify.SearchSpec{args.Offset(), args.Limit}
+	spec := spotify.SearchSpec{args.Offset(), args.Limit()}
 	opts := spotify.SearchOptions{}
 	if artists {
 		opts.Artists = spec
@@ -260,4 +328,124 @@ func (a *application) search(bridge *bridge, enc encoder.Encoder, args searchArg
 	}
 
 	return http.StatusOK, encoder.Must(enc.Encode(result))
+}
+
+type playlistsArgs struct {
+	RawPage  int `form:"page" json:"page"`
+	RawLimit int `form:"limit" json:"limit"`
+}
+
+func (pa playlistsArgs) Page() int {
+	if pa.RawPage == 0 {
+		return 1
+	}
+	return pa.RawPage
+}
+
+func (pa playlistsArgs) Limit() int {
+	if pa.RawLimit == 0 {
+		return 10
+	}
+	return pa.RawLimit
+}
+
+func (pa playlistsArgs) Offset() int {
+	return (pa.Page() - 1) * pa.Limit()
+}
+
+func (pa playlistsArgs) OffLimit() int {
+	return pa.Offset() + pa.Limit()
+}
+
+// playlists returns the playlists for the user.
+func (a *application) playlists(bridge *bridge, enc encoder.Encoder, args playlistsArgs) (int, []byte) {
+	bridge.sync()
+
+	playlists, err := bridge.sess.Playlists()
+	if err != nil {
+		log.Info(err.Error())
+		return http.StatusInternalServerError, nil
+	}
+
+	playlists.Wait()
+
+	r := PlaylistsResult{}
+
+	// Make this more asynchronous? We probably don't won't to wait for all metadata.
+	for i := args.Offset(); i < playlists.Playlists() && i < args.OffLimit(); i++ {
+		switch playlists.PlaylistType(i) {
+		case spotify.PlaylistTypePlaylist:
+			playlist := playlists.Playlist(i)
+			r.Playlists = append(r.Playlists, newPlaylist(playlist))
+		// TODO
+		case spotify.PlaylistTypeStartFolder:
+		case spotify.PlaylistTypeEndFolder:
+		case spotify.PlaylistTypePlaceholder:
+		}
+	}
+
+	return http.StatusOK, encoder.Must(enc.Encode(r))
+}
+
+type playlistArgs struct {
+	RawPage  int `form:"page" json:"page"`
+	RawLimit int `form:"limit" json:"limit"`
+}
+
+func (pa playlistArgs) Page() int {
+	if pa.RawPage == 0 {
+		return 1
+	}
+	return pa.RawPage
+}
+
+func (pa playlistArgs) Limit() int {
+	if pa.RawLimit == 0 {
+		return 10
+	}
+	return pa.RawLimit
+}
+
+func (pa playlistArgs) Offset() int {
+	return (pa.Page() - 1) * pa.Limit()
+}
+
+func (pa playlistArgs) OffLimit() int {
+	return pa.Offset() + pa.Limit()
+}
+
+// playlist returns a specific playlist
+func (a *application) playlist(bridge *bridge, enc encoder.Encoder, args playlistArgs, params martini.Params) (int, []byte) {
+	bridge.sync()
+
+	// TODO unescape?
+	user := params["user"]
+	id := params["id"]
+	uri := fmt.Sprintf("spotify:user:%s:playlist:%s", user, id)
+
+	link, err := bridge.sess.ParseLink(uri)
+	if err != nil {
+		log.Info(err.Error())
+		return http.StatusInternalServerError, nil
+	}
+	if link.Type() != spotify.LinkTypePlaylist {
+		return http.StatusBadRequest, nil
+	}
+
+	playlist, err := link.Playlist()
+	if err != nil {
+		log.Info(err.Error())
+		return http.StatusInternalServerError, nil
+	}
+
+	playlist.Wait()
+
+	r := PlaylistResult{newPlaylist(playlist)}
+
+	for i := args.Offset(); i < playlist.Tracks() && i < args.OffLimit(); i++ {
+		pt := playlist.Track(i)
+		r.Playlist.Tracks = append(r.Playlist.Tracks, newPlaylistTrack(pt))
+	}
+
+	return http.StatusOK, encoder.Must(enc.Encode(r))
 }

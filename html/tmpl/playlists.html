@@ -1,0 +1,9 @@
+<div ng-controller="PlaylistsCtrl">
+  <h1>playlists</h1>
+  <hr>
+  <ol>
+    <li ng-repeat="playlist in playlists">
+    <p><a href="/#/user/{{playlist.owner}}/playlist/{{playlist.id}}">{{playlist.name}}</a></p>
+    </li>
+  </ol>
+</div>

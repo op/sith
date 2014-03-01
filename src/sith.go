@@ -73,6 +73,8 @@ func Run() {
 	// Exposed API methods
 	router := martini.NewRouter()
 	router.Get("/search", binding.Bind(searchArgs{}), app.search)
+	router.Get("/playlists", binding.Bind(playlistsArgs{}), app.playlists)
+	router.Get("/user/:username/playlist/:id", binding.Bind(playlistArgs{}), app.playlist)
 	m.Action(router.Handle)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *port)

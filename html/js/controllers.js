@@ -1,6 +1,6 @@
-var searchControllers = angular.module('searchControllers', []);
+var sithCtrls = angular.module('sithCtrls', []);
 
-searchControllers.controller('SearchCtrl', ['$scope', '$http', function($scope, $http) {
+sithCtrls.controller('SearchCtrl', ['$scope', '$http', function($scope, $http) {
   $scope.search = function() {
     // TODO ng-minlength should take care of this?
     if (this.query) {
@@ -16,4 +16,18 @@ searchControllers.controller('SearchCtrl', ['$scope', '$http', function($scope, 
       $scope.tracks = [];
     }
   }
+}]);
+
+sithCtrls.controller('PlaylistsCtrl', ['$scope', '$http', function($scope, $http) {
+  $http.get('/playlists?limit=6789').success(function(data) {
+    $scope.playlists = data.playlists;
+  });
+}]);
+
+sithCtrls.controller('PlaylistCtrl', ['$scope', '$http', '$routeParams', function($scope, $http, $routeParams) {
+  // TODO url escape?
+  var url = '/user/' + $routeParams.user + '/playlist/' + $routeParams.playlistId;
+  $http.get(url + '?limit=6789').success(function(data) {
+    $scope.playlist = data.playlist;
+  });
 }]);
