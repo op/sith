@@ -25,7 +25,6 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"code.google.com/p/portaudio-go/portaudio"
 	"github.com/codegangsta/martini"
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/encoder"
@@ -51,19 +50,18 @@ func Run() {
 	flag.Parse()
 	setupLogging()
 
-	// TODO hide somewhere else
-	portaudio.Initialize()
-	defer portaudio.Terminate()
-
-	pa := newPortAudio()
-	go pa.player()
+	audio, err := newAudioWriter()
+	if err != nil {
+		panic(err)
+	}
+	defer audio.Close()
 
 	// TODO there's a limitation with libspotify, we can only have one logged in
 	//      user per process. maybe we should create a layer that spawns a new
 	//      process for each session required and have a small layer between?
 	//      that's why this is currently called a bridge. it doesn't do much
 	//      right now.
-	bridge := newBridge(newSession(pa))
+	bridge := newBridge(newSession(&audio))
 	app := &application{}
 
 	root := resourcePath()
@@ -147,7 +145,7 @@ func resourcePath() string {
 }
 
 // newSession creates a new libspotify session.
-func newSession(ac spotify.AudioConsumer) *spotify.Session {
+func newSession(audio spotify.AudioConsumer) *spotify.Session {
 	appKey, err := ioutil.ReadFile(*appKeyPath)
 	if err != nil {
 		log.Fatal(err)
@@ -159,7 +157,7 @@ func newSession(ac spotify.AudioConsumer) *spotify.Session {
 		ApplicationName:  prog,
 		CacheLocation:    "tmp",
 		SettingsLocation: "tmp",
-		AudioConsumer:    ac,
+		AudioConsumer:    audio,
 	})
 
 	// TODO move control of the session into the API
