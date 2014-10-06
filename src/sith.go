@@ -1,4 +1,4 @@
-// Copyright 2013 Örjan Persson
+// Copyright 2013-2014 Örjan Persson
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"code.google.com/p/portaudio-go/portaudio"
 	"github.com/codegangsta/martini"
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/encoder"
@@ -50,12 +51,19 @@ func Run() {
 	flag.Parse()
 	setupLogging()
 
+	// TODO hide somewhere else
+	portaudio.Initialize()
+	defer portaudio.Terminate()
+
+	pa := newPortAudio()
+	go pa.player()
+
 	// TODO there's a limitation with libspotify, we can only have one logged in
 	//      user per process. maybe we should create a layer that spawns a new
 	//      process for each session required and have a small layer between?
 	//      that's why this is currently called a bridge. it doesn't do much
 	//      right now.
-	bridge := newBridge(newSession())
+	bridge := newBridge(newSession(pa))
 	app := &application{}
 
 	root := resourcePath()
@@ -75,6 +83,9 @@ func Run() {
 	router.Get("/search", binding.Bind(searchArgs{}), app.search)
 	router.Get("/playlists", binding.Bind(playlistsArgs{}), app.playlists)
 	router.Get("/user/:username/playlist/:id", binding.Bind(playlistArgs{}), app.playlist)
+	router.Get("/player/play", app.play)
+	router.Get("/player/pause", app.pause)
+	router.Get("/player/load", binding.Bind(loadArgs{}), app.load)
 	m.Action(router.Handle)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *port)
@@ -136,7 +147,7 @@ func resourcePath() string {
 }
 
 // newSession creates a new libspotify session.
-func newSession() *spotify.Session {
+func newSession(ac spotify.AudioConsumer) *spotify.Session {
 	appKey, err := ioutil.ReadFile(*appKeyPath)
 	if err != nil {
 		log.Fatal(err)
@@ -148,6 +159,7 @@ func newSession() *spotify.Session {
 		ApplicationName:  prog,
 		CacheLocation:    "tmp",
 		SettingsLocation: "tmp",
+		AudioConsumer:    ac,
 	})
 
 	// TODO move control of the session into the API

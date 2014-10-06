@@ -8,19 +8,19 @@
   <h3>artists</h3>
   <ul>
     <li ng-repeat="artist in artists">
-    <p>{{artist.name}}</p>
+      <p>{{artist.name}}</p>
     </li>
   </ul>
   <h3>albums</h3>
   <ul>
     <li ng-repeat="album in albums">
-    <p>{{album.name}}</p>
+      <p>{{album.name}}</p>
     </li>
   </ul>
   <h3>tracks</h3>
   <ul>
     <li ng-repeat="track in tracks">
-    <p>{{track.name}}</p>
+      <p><a ng-click="load(track.uri)">{{track.name}}</a></p>
     </li>
   </ul>
 </div>

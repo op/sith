@@ -15,7 +15,13 @@ sithCtrls.controller('SearchCtrl', ['$scope', '$http', function($scope, $http) {
       $scope.albums = [];
       $scope.tracks = [];
     }
-  }
+  };
+
+  $scope.load = function(uri) {
+    $http.get('/player/load?uri=' + uri + '&oauth_token=xxx').success(function() {
+      console.log('Successfully changed track to: %s', uri);
+    });
+  };
 }]);
 
 sithCtrls.controller('PlaylistsCtrl', ['$scope', '$http', function($scope, $http) {
@@ -30,4 +36,24 @@ sithCtrls.controller('PlaylistCtrl', ['$scope', '$http', '$routeParams', functio
   $http.get(url + '?limit=6789').success(function(data) {
     $scope.playlist = data.playlist;
   });
+
+  $scope.load = function(uri) {
+    $http.get('/player/load?uri=' + uri + '&oauth_token=xxx').success(function() {
+      console.log('Successfully changed track to: %s', uri);
+    });
+  };
+}]);
+
+sithCtrls.controller('PlayerCtrl', ['$scope', '$http', function($scope, $http) {
+  // TODO update from other events
+  $scope.playing = false;
+
+  $scope.play = function() {
+    $http.get('/player/play?oauth_token=xxx');
+    this.playing = true;
+  };
+  $scope.pause = function() {
+    $http.get('/player/pause?oauth_token=xxx');
+    this.playing = false;
+  };
 }]);

@@ -1,4 +1,4 @@
-// Copyright 2013 Örjan Persson
+// Copyright 2013-2014 Örjan Persson
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -448,4 +448,50 @@ func (a *application) playlist(bridge *bridge, enc encoder.Encoder, args playlis
 	}
 
 	return http.StatusOK, encoder.Must(enc.Encode(r))
+}
+
+func (a *application) play(bridge *bridge, enc encoder.Encoder) (int, []byte) {
+	bridge.sync()
+
+	player := bridge.sess.Player()
+	player.Play()
+
+	return http.StatusOK, nil
+}
+
+func (a *application) pause(bridge *bridge, enc encoder.Encoder) (int, []byte) {
+	bridge.sync()
+
+	player := bridge.sess.Player()
+	player.Pause()
+
+	return http.StatusOK, nil
+}
+
+type loadArgs struct {
+	URI string `form:"uri"`
+}
+
+func (a *application) load(bridge *bridge, enc encoder.Encoder, args loadArgs) (int, []byte) {
+	bridge.sync()
+
+	link, err := bridge.sess.ParseLink(args.URI)
+	if err != nil {
+		log.Info(err.Error())
+		return http.StatusBadRequest, nil
+	}
+	track, err := link.Track()
+	if err != nil {
+		return http.StatusBadRequest, nil
+	}
+
+	track.Wait()
+	player := bridge.sess.Player()
+	if err := player.Load(track); err != nil {
+		log.Info(err.Error())
+		return http.StatusInternalServerError, nil
+	}
+	player.Play()
+
+	return http.StatusOK, nil
 }
