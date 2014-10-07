@@ -15,19 +15,25 @@
 package sith
 
 import (
+	"sync"
+	"time"
+
 	"code.google.com/p/portaudio-go/portaudio"
 	"github.com/op/go-libspotify/spotify"
 )
 
 var (
-	// audioBufferSize is the number of delivered data from libspotify before
+	// audioInputBufferSize is the number of delivered data from libspotify before
 	// we start rejecting it to deliver any more.
-	audioBufferSize = 16
+	audioInputBufferSize = 16
 
-	// audioFormat is the internal format expected from libspotify.
-	audioFormat = spotify.AudioFormat{
-		spotify.SampleTypeInt16NativeEndian, 44100, 2,
-	}
+	// audioOutputBufferSize is the maximum number of bytes to buffer before
+	// passing it to PortAudio.
+	audioOutputBufferSize = 8192
+
+	// audioErrorDelay is the duration to delay between errors when setting up the
+	// audio stream.
+	audioErrorDelay = time.Second
 )
 
 // audio wraps the delivered Spotify data into a single struct.
@@ -38,70 +44,171 @@ type audio struct {
 
 // audioWriter takes audio from libspotify and outputs it through PortAudio.
 type audioWriter struct {
-	buffer chan audio
-	stream *portaudio.Stream
+	input chan audio
+
+	quit chan bool
+	err  chan error
+	wg   sync.WaitGroup
 }
 
 // newAudioWriter creates a new audioWriter handler.
-//
-// This method is expected to only be called once during the lifetime of Go.
 func newAudioWriter() (audioWriter, error) {
-	pa := audioWriter{buffer: make(chan audio, audioBufferSize)}
-
-	portaudio.Initialize()
-	h, err := portaudio.DefaultHostApi()
-	if err != nil {
-		return pa, err
+	w := audioWriter{
+		input: make(chan audio, audioInputBufferSize),
+		quit:  make(chan bool, 1),
 	}
 
-	params := portaudio.LowLatencyParameters(nil, h.DefaultOutputDevice)
-	params.Output.Channels = audioFormat.Channels
-	params.SampleRate = float64(audioFormat.SampleRate)
+	stream, err := newPortAudioStream()
+	if err != nil {
+		return w, err
+	}
 
-	pa.stream, err = portaudio.OpenStream(params, pa.streamWriter())
-	return pa, pa.stream.Start()
+	w.wg.Add(1)
+	go w.streamWriter(stream)
+	return w, nil
 }
 
 // Close stops and closes the audio stream and terminates PortAudio.
 func (w *audioWriter) Close() error {
-	if err := w.stream.Stop(); err != nil {
-		return err
-	}
-	if err := w.stream.Close(); err != nil {
-		return err
-	}
-	return portaudio.Terminate()
+	w.quit <- true
+	w.wg.Wait()
+	return nil
+}
+
+func (w *audioWriter) Error() <-chan error {
+	return w.err
 }
 
 // WriteAudio implements the spotify.AudioWriter interface.
 func (w *audioWriter) WriteAudio(format spotify.AudioFormat, frames []byte) int {
 	select {
-	case w.buffer <- audio{format, frames}:
+	case w.input <- audio{format, frames}:
 		return len(frames)
 	default:
 		return 0
 	}
 }
 
-// streamWriter reads data from the internal buffer and writes it into the
-// internal portaudio buffer.
-func (w *audioWriter) streamWriter() func([]int16) {
-	var i int
-	var buf audio
-	return func(out []int16) {
-		for j := 0; j < len(out); j++ {
-			if i >= len(buf.frames) {
-				buf = <-w.buffer
-				if !audioFormat.Equal(buf.format) {
-					panic("unexpected audio format")
-				}
-				i = 0
+// streamWriter reads data from the input buffer and writes it to the output
+// portaudio buffer.
+func (w *audioWriter) streamWriter(stream portAudioStream) {
+	defer w.wg.Done()
+	defer stream.Close()
+
+	buffer := make([]int16, audioOutputBufferSize)
+	output := buffer[:]
+
+	for {
+		// Wait for input data or signal to quit.
+		var input audio
+		select {
+		case input = <-w.input:
+		case <-w.quit:
+			return
+		}
+
+		// Initialize the audio stream based on the specification of the input format.
+		err := stream.Stream(&output, input.format.Channels, input.format.SampleRate)
+		if err != nil {
+			select {
+			case w.err <- err:
+			default:
+				log.Error("Failed to prepare audio stream: %s", err)
+				time.Sleep(audioErrorDelay)
+			}
+			continue
+		}
+
+		// Decode the incoming data which is expected to be 2 channels and
+		// delivered as int16 in []byte, hence we need to convert it.
+		i := 0
+		for i < len(input.frames) {
+			j := 0
+			for j < len(buffer) && i < len(input.frames) {
+				buffer[j] = int16(input.frames[i]) | int16(input.frames[i+1])<<8
+				j += 1
+				i += 2
 			}
 
-			// Decode the incoming data which is expected to be 2 channels and
-			// delivered as int16 in []byte, hence we need to convert it.
-			out[j] = int16(buf.frames[i]) | int16(buf.frames[i+1])<<8
-			i += 2
+			output = buffer[:j]
+			stream.Write()
 		}
 	}
+}
+
+// portAudioStream manages the output stream through PortAudio when requirement
+// for number of channels or sample rate changes.
+type portAudioStream struct {
+	device *portaudio.DeviceInfo
+	stream *portaudio.Stream
+
+	channels   int
+	sampleRate int
+}
+
+// newPortAudioStream creates a new portAudioStream using the default output
+// device found on the system. It will also take care of automatically
+// initialise the PortAudio API.
+func newPortAudioStream() (portAudioStream, error) {
+	var s portAudioStream
+	if err := portaudio.Initialize(); err != nil {
+		return s, err
+	}
+	out, err := portaudio.DefaultHostApi()
+	if err != nil {
+		portaudio.Terminate()
+		return s, err
+	}
+	s.device = out.DefaultOutputDevice
+	return s, nil
+}
+
+// Close closes any open audio stream and terminates the PortAudio API.
+func (s *portAudioStream) Close() error {
+	s.reset()
+	return portaudio.Terminate()
+}
+
+func (s *portAudioStream) reset() error {
+	if s.stream != nil {
+		if err := s.stream.Stop(); err != nil {
+			return err
+		}
+		if err := s.stream.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Stream prepares the stream to go through the specified buffer, channels and
+// sample rate, re-using any previously defined stream or setting up a new one.
+func (s *portAudioStream) Stream(buffer *[]int16, channels int, sampleRate int) error {
+	if s.stream == nil || s.channels != channels || s.sampleRate != sampleRate {
+		s.reset()
+
+		params := portaudio.HighLatencyParameters(nil, s.device)
+		params.Output.Channels = channels
+		params.SampleRate = float64(sampleRate)
+		params.FramesPerBuffer = len(*buffer)
+
+		stream, err := portaudio.OpenStream(params, buffer)
+		if err != nil {
+			return err
+		}
+		if err := stream.Start(); err != nil {
+			stream.Close()
+			return err
+		}
+
+		s.stream = stream
+		s.channels = channels
+		s.sampleRate = sampleRate
+	}
+	return nil
+}
+
+// Write pushes the data in the buffer through to PortAudio.
+func (s *portAudioStream) Write() error {
+	return s.stream.Write()
 }
