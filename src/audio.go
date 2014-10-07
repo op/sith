@@ -15,6 +15,7 @@
 package sith
 
 import (
+	"runtime"
 	"sync"
 	"time"
 
@@ -25,7 +26,7 @@ import (
 var (
 	// audioInputBufferSize is the number of delivered data from libspotify before
 	// we start rejecting it to deliver any more.
-	audioInputBufferSize = 16
+	audioInputBufferSize = 8
 
 	// audioOutputBufferSize is the maximum number of bytes to buffer before
 	// passing it to PortAudio.
@@ -95,6 +96,7 @@ func (w *audioWriter) streamWriter(stream portAudioStream) {
 	defer w.wg.Done()
 	defer stream.Close()
 
+	runtime.LockOSThread()
 	buffer := make([]int16, audioOutputBufferSize)
 	output := buffer[:]
 
