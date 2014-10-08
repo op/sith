@@ -167,7 +167,10 @@ func newPortAudioStream() (portAudioStream, error) {
 
 // Close closes any open audio stream and terminates the PortAudio API.
 func (s *portAudioStream) Close() error {
-	s.reset()
+	if err := s.reset(); err != nil {
+		portaudio.Terminate()
+		return err
+	}
 	return portaudio.Terminate()
 }
 
@@ -187,7 +190,9 @@ func (s *portAudioStream) reset() error {
 // sample rate, re-using any previously defined stream or setting up a new one.
 func (s *portAudioStream) Stream(buffer *[]int16, channels int, sampleRate int) error {
 	if s.stream == nil || s.channels != channels || s.sampleRate != sampleRate {
-		s.reset()
+		if err := s.reset(); err != nil {
+			return err
+		}
 
 		params := portaudio.HighLatencyParameters(nil, s.device)
 		params.Output.Channels = channels

@@ -1,24 +1,19 @@
 var sithCtrls = angular.module('sithCtrls', []);
 
 sithCtrls.controller('SearchCtrl', ['$scope', '$http', function($scope, $http) {
-  $scope.search = function() {
+  $scope.execute = function() {
     // TODO ng-minlength should take care of this?
     if (this.query) {
       // TODO move all http calls into separate module
       $http.get('/search?query=' + this.query + '&oauth_token=xxx').success(function(data) {
-        $scope.artists = data.artists;
-        $scope.albums = data.albums;
-        $scope.tracks = data.tracks;
+        $scope.search = data;
       });
-    } else {
-      $scope.artists = [];
-      $scope.albums = [];
-      $scope.tracks = [];
     }
   };
 
-  $scope.load = function(uri) {
-    $http.get('/player/load?uri=' + uri + '&oauth_token=xxx').success(function() {
+  $scope.load = function(context, offset, uri) {
+    // TODO url encode parameters
+    $http.get('/player/load?ctx=' + context + '&offset=' + offset + '&uri=' + uri + '&query=' + this.query + '&oauth_token=xxx').success(function() {
       console.log('Successfully changed track to: %s', uri);
     });
   };
@@ -37,8 +32,8 @@ sithCtrls.controller('PlaylistCtrl', ['$scope', '$http', '$routeParams', functio
     $scope.playlist = data.playlist;
   });
 
-  $scope.load = function(uri) {
-    $http.get('/player/load?uri=' + uri + '&oauth_token=xxx').success(function() {
+  $scope.load = function(playlistUri, offset, uri) {
+    $http.get('/player/load?ctx=' + playlistUri + '&offset=' + offset + '&uri=' + uri + '&oauth_token=xxx').success(function() {
       console.log('Successfully changed track to: %s', uri);
     });
   };

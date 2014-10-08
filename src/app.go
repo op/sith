@@ -29,7 +29,8 @@ import (
 )
 
 type bridge struct {
-	sess *spotify.Session
+	sess   *spotify.Session
+	player player
 
 	ew EventsWriter
 
@@ -41,8 +42,9 @@ type bridge struct {
 
 func newBridge(session *spotify.Session, ew EventsWriter) *bridge {
 	b := &bridge{
-		sess: session,
-		ew:   ew,
+		sess:   session,
+		player: newPlayer(session, ew),
+		ew:     ew,
 	}
 	b.cond = sync.NewCond(b.mu.RLocker())
 	go b.processEvents()
@@ -79,6 +81,7 @@ func (b *bridge) thaw() {
 }
 
 func (b *bridge) Stop() {
+	b.player.Close()
 	b.sess.Logout()
 	b.exit <- struct{}{}
 }
@@ -268,6 +271,9 @@ type PlaylistsResult struct {
 }
 
 type SearchResult struct {
+	Uri        string `json:"uri"`
+	DidYouMean string `json:"didyoumean"`
+
 	Artists []*Artist `json:"artists"`
 	Albums  []*Album  `json:"albums"`
 	Tracks  []*Track  `json:"tracks"`
@@ -346,7 +352,10 @@ func (a *application) search(bridge *bridge, enc encoder.Encoder, args searchArg
 	}
 	search.Wait()
 
-	var result SearchResult
+	result := SearchResult{
+		Uri:        search.Link().String(),
+		DidYouMean: search.DidYouMean(),
+	}
 	if artists {
 		result.Artists = make([]*Artist, 0, search.Artists())
 		for i := 0; i < search.Artists(); i++ {
@@ -514,29 +523,45 @@ func (a *application) pause(bridge *bridge, enc encoder.Encoder) (int, []byte) {
 }
 
 type loadArgs struct {
-	URI string `form:"uri"`
+	Context string `form:"ctx"`
+	Offset  int    `form:"offset"`
+	URI     string `form:"uri"`
+	Query   string `form:"query"`
 }
 
 func (a *application) load(bridge *bridge, enc encoder.Encoder, args loadArgs) (int, []byte) {
 	bridge.sync()
 
-	link, err := bridge.sess.ParseLink(args.URI)
+	ctxLink, err := bridge.sess.ParseLink(args.Context)
 	if err != nil {
 		log.Info(err.Error())
 		return http.StatusBadRequest, nil
 	}
-	track, err := link.Track()
-	if err != nil {
+	var tracks trackList
+	switch ctxLink.Type() {
+	case spotify.LinkTypePlaylist:
+		playlist, err := ctxLink.Playlist()
+		if err != nil {
+			return http.StatusInternalServerError, nil
+		}
+		playlist.Wait()
+		tracks = &playlistTracks{playlist}
+	case spotify.LinkTypeSearch:
+		// TODO get offset and limit as arguments (offset of search)
+		opts := spotify.SearchOptions{Tracks: spotify.SearchSpec{0, 50}}
+		search, err := bridge.sess.Search(args.Query, &opts)
+		if err != nil {
+			return http.StatusInternalServerError, nil
+		}
+		search.Wait()
+		tracks = &searchTracks{search}
+	default:
 		return http.StatusBadRequest, nil
 	}
 
-	track.Wait()
-	player := bridge.sess.Player()
-	if err := player.Load(track); err != nil {
-		log.Info(err.Error())
+	if err = bridge.player.Play(tracks, args.Offset); err != nil {
 		return http.StatusInternalServerError, nil
 	}
-	player.Play()
 
 	return http.StatusOK, nil
 }

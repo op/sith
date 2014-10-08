@@ -1,26 +1,28 @@
 <div ng-controller="SearchCtrl">
   <form>
   <label>search</label>
-  <input type="text" required ng-model="query" ng-change="search()" ng-minlength="1" ng-maxlength="256" placeholder="Search query" />
+  <input type="text" required ng-model="query" ng-change="execute()" ng-minlength="1" ng-maxlength="256" placeholder="Search query" />
   </form>
   <hr>
   <h1>Searching {{query}}!</h1>
+  <p><em>{{search.didyoumean}}</em></p>
+
   <h3>artists</h3>
   <ul>
-    <li ng-repeat="artist in artists">
+    <li ng-repeat="artist in search.artists">
       <p>{{artist.name}}</p>
     </li>
   </ul>
   <h3>albums</h3>
   <ul>
-    <li ng-repeat="album in albums">
+    <li ng-repeat="album in search.albums">
       <p>{{album.name}}</p>
     </li>
   </ul>
   <h3>tracks</h3>
   <ul>
-    <li ng-repeat="track in tracks">
-      <p><a ng-click="load(track.uri)">{{track.name}}</a></p>
+    <li ng-repeat="track in search.tracks">
+      <p><a ng-click="load(search.uri, $index, track.uri)">{{track.name}}</a></p>
     </li>
   </ul>
 </div>

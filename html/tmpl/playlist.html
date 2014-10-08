@@ -3,7 +3,7 @@
   <hr>
   <ol>
     <li ng-repeat="track in playlist.tracks">
-      <p><a ng-click="load(track.uri)">{{track.name}}</a></p>
+      <p><a ng-click="load(playlist.uri, $index, track.uri)">{{track.name}}</a></p>
     </li>
   </ol>
 </div>
