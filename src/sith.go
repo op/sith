@@ -50,6 +50,9 @@ func Run() {
 	flag.Parse()
 	setupLogging()
 
+	eventsWriter := NewEventsWriter()
+	defer eventsWriter.Close()
+
 	audio, err := newAudioWriter()
 	if err != nil {
 		panic(err)
@@ -61,7 +64,7 @@ func Run() {
 	//      process for each session required and have a small layer between?
 	//      that's why this is currently called a bridge. it doesn't do much
 	//      right now.
-	bridge := newBridge(newSession(&audio))
+	bridge := newBridge(newSession(&audio), eventsWriter)
 	app := &application{}
 
 	root := resourcePath()
@@ -84,6 +87,9 @@ func Run() {
 	router.Get("/player/play", app.play)
 	router.Get("/player/pause", app.pause)
 	router.Get("/player/load", binding.Bind(loadArgs{}), app.load)
+
+	router.Get("/events", eventsWriter.ServeHTTP)
+
 	m.Action(router.Handle)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *port)

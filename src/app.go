@@ -31,18 +31,21 @@ import (
 type bridge struct {
 	sess *spotify.Session
 
+	ew EventsWriter
+
 	mu      sync.RWMutex
 	cond    *sync.Cond
 	running bool
 	exit    chan struct{}
 }
 
-func newBridge(session *spotify.Session) *bridge {
+func newBridge(session *spotify.Session, ew EventsWriter) *bridge {
 	b := &bridge{
 		sess: session,
+		ew:   ew,
 	}
 	b.cond = sync.NewCond(b.mu.RLocker())
-	go b.events()
+	go b.processEvents()
 	return b
 }
 
@@ -80,26 +83,68 @@ func (b *bridge) Stop() {
 	b.exit <- struct{}{}
 }
 
-func (b *bridge) events() {
+func (b *bridge) processEvents() {
 	var stopping bool
+
+	var logLevels = map[spotify.LogLevel]string{
+		spotify.LogFatal:   "fatal",
+		spotify.LogError:   "error",
+		spotify.LogWarning: "warning",
+		spotify.LogInfo:    "info",
+		spotify.LogDebug:   "debug",
+	}
 
 	for {
 		select {
-		case err := <-b.sess.LoginUpdates():
+		case err := <-b.sess.LoggedInUpdates():
 			time.Sleep(2 * time.Second)
 			b.thaw()
 			if err != nil {
 				log.Error("Login? %s", err)
 			}
 			log.Info("Interface now available at http://localhost:%d/", *port)
-		case <-b.sess.LogoutUpdates():
+			b.ew.SendEvent("logged-in", err)
+		case <-b.sess.LoggedOutUpdates():
 			b.freeze()
 			log.Warning("Logged out. Interface thawed.")
+			b.ew.SendEvent("logged-out", nil)
 			if stopping {
 				return
 			}
+		case err := <-b.sess.ConnectionErrorUpdates():
+			log.Error("Connection error: %s", err)
+			b.ew.SendEvent("connection-error", err)
+		case msg := <-b.sess.MessagesToUser():
+			log.Error("Message to user: %s", msg)
+			b.ew.SendEvent("user-message", msg)
+		case <-b.sess.PlayTokenLostUpdates():
+			log.Warning("Play token lost.")
+			b.ew.SendEvent("play-token-lost", nil)
 		case message := <-b.sess.LogMessages():
 			b.log(message)
+
+			// Pass the message through using server sent message
+			b.ew.SendEvent("log", struct {
+				Time    int64  `json:"time"`
+				Level   string `json:"level"`
+				Module  string `json:"module"`
+				Message string `json:"message"`
+			}{
+				message.Time.Unix(),
+				logLevels[message.Level],
+				message.Module,
+				message.Message,
+			})
+		case <-b.sess.EndOfTrackUpdates():
+			log.Info("End of track reached.")
+			b.player.EndOfTrack()
+			b.ew.SendEvent("track-end", nil)
+		case err := <-b.sess.StreamingErrors():
+			log.Info("Streaming errors: %s", err)
+			b.ew.SendEvent("streaming-error", err)
+		case <-b.sess.ConnectionStateUpdates():
+			log.Info("Connection state updates available.")
+			b.ew.SendEvent("connection-state", nil)
 		case <-time.After(200 * time.Millisecond):
 			select {
 			case <-b.exit:
