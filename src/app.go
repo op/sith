@@ -190,7 +190,7 @@ func (b *bridge) log(m *spotify.LogMessage) {
 }
 
 type Track struct {
-	Uri  string `json:"uri"`
+	URI  string `json:"uri"`
 	Name string `json:"name"`
 }
 
@@ -199,7 +199,7 @@ func newTrack(t *spotify.Track) *Track {
 }
 
 type Album struct {
-	Uri  string `json:"uri"`
+	URI  string `json:"uri"`
 	Name string `json:"name"`
 }
 
@@ -208,7 +208,7 @@ func newAlbum(a *spotify.Album) *Album {
 }
 
 type Artist struct {
-	Uri  string `json:"uri"`
+	URI  string `json:"uri"`
 	Name string `json:"name"`
 }
 
@@ -217,15 +217,19 @@ func newArtist(a *spotify.Artist) *Artist {
 }
 
 type Playlist struct {
-	Id     string           `json:"id"`
-	Uri    string           `json:"uri"`
-	Name   string           `json:"name"`
-	Owner  string           `json:"owner"`
-	Tracks []*PlaylistTrack `json:"tracks"`
+	Id            string           `json:"id"`
+	URI           string           `json:"uri"`
+	Name          string           `json:"name"`
+	Description   string           `json:"description"`
+	Collaborative bool             `json:"collaborative"`
+	Subscribers   int              `json:"subscribers"`
+	Owner         string           `json:"owner"`
+	Tracks        []*PlaylistTrack `json:"tracks"`
 }
 
 type PlaylistTrack struct {
-	Uri  string `json:"uri"`
+	UID  string `json:"uid"`
+	URI  string `json:"uri"`
 	Name string `json:"name"`
 	User string `json:"user"`
 	Time string `json:"time"`
@@ -238,6 +242,7 @@ func timeStr(t time.Time) string {
 func newPlaylistTrack(pt *spotify.PlaylistTrack) *PlaylistTrack {
 	t := pt.Track()
 	return &PlaylistTrack{
+		playlistTrackUID(pt),
 		t.Link().String(),
 		t.Name(),
 		pt.User().CanonicalName(),
@@ -257,6 +262,9 @@ func newPlaylist(p *spotify.Playlist) *Playlist {
 		id,
 		p.Link().String(),
 		p.Name(),
+		p.Description(),
+		p.Collaborative(),
+		p.NumSubscribers(),
 		owner.CanonicalName(),
 		nil,
 	}
@@ -271,7 +279,7 @@ type PlaylistsResult struct {
 }
 
 type SearchResult struct {
-	Uri        string `json:"uri"`
+	URI        string `json:"uri"`
 	DidYouMean string `json:"didyoumean"`
 
 	Artists []*Artist `json:"artists"`
@@ -353,7 +361,7 @@ func (a *application) search(bridge *bridge, enc encoder.Encoder, args searchArg
 	search.Wait()
 
 	result := SearchResult{
-		Uri:        search.Link().String(),
+		URI:        search.Link().String(),
 		DidYouMean: search.DidYouMean(),
 	}
 	if artists {
@@ -524,7 +532,7 @@ func (a *application) pause(bridge *bridge, enc encoder.Encoder) (int, []byte) {
 
 type loadArgs struct {
 	Context string `form:"ctx"`
-	Offset  int    `form:"offset"`
+	Index   int    `form:"index"`
 	URI     string `form:"uri"`
 	Query   string `form:"query"`
 }
@@ -559,7 +567,7 @@ func (a *application) load(bridge *bridge, enc encoder.Encoder, args loadArgs) (
 		return http.StatusBadRequest, nil
 	}
 
-	if err = bridge.player.Play(tracks, args.Offset); err != nil {
+	if err = bridge.player.Play(tracks, args.Index); err != nil {
 		return http.StatusInternalServerError, nil
 	}
 

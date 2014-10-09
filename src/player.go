@@ -27,39 +27,87 @@ const (
 
 var endOfContext = errors.New("end of context")
 
+type trackInfo struct {
+	UID   string
+	Track *spotify.Track
+}
+
 // TODO hack, this interface doesn't make sense
 type trackList interface {
+	URI() string
 	Len() int
-	Get(int) (*spotify.Track, error)
+	Get(int) (trackInfo, error)
 }
 
 type playlistTracks struct {
 	playlist *spotify.Playlist
 }
 
+func (pt *playlistTracks) URI() string {
+	return pt.playlist.Link().String()
+}
+
 func (pt *playlistTracks) Len() int {
 	return pt.playlist.Tracks()
 }
 
-func (pt *playlistTracks) Get(n int) (*spotify.Track, error) {
-	return pt.playlist.Track(n).Track(), nil
+func (pt *playlistTracks) Get(n int) (trackInfo, error) {
+	playlistTrack := pt.playlist.Track(n)
+	uid := playlistTrackUID(playlistTrack)
+	return trackInfo{uid, playlistTrack.Track()}, nil
 }
 
 type searchTracks struct {
 	search *spotify.Search
 }
 
+func (st *searchTracks) URI() string {
+	return st.search.Link().String()
+}
+
 func (st *searchTracks) Len() int {
 	return st.search.Tracks()
 }
 
-func (st *searchTracks) Get(n int) (*spotify.Track, error) {
-	return st.search.Track(n), nil
+func (st *searchTracks) Get(n int) (trackInfo, error) {
+	// For the search view the URI is unique and enough
+	track := st.search.Track(n)
+	uid := track.Link().String()
+	return trackInfo{uid, track}, nil
 }
 
 type playerContext struct {
 	tracks trackList
-	offset int
+
+	last  trackInfo
+	index int
+}
+
+func (pc *playerContext) Next() (trackInfo, error) {
+	i := pc.index
+
+	// Find the current playing track and advance to next. Eg. playlists might
+	// have been modified since last time, try to find the correct position.
+	if pc.last.Track != nil {
+		track, err := pc.tracks.Get(i)
+		if err == nil && track.UID != pc.last.UID {
+			for i = 0; i < pc.tracks.Len(); i++ {
+				track, err = pc.tracks.Get(i)
+				if err == nil && track.UID == pc.last.UID {
+					break
+				}
+			}
+			// As a last resort, assume we start from last index
+			if i >= pc.tracks.Len() {
+				i = pc.index
+			}
+		}
+		i++
+	}
+	var err error
+	pc.index = i % pc.tracks.Len()
+	pc.last, err = pc.tracks.Get(pc.index)
+	return pc.last, err
 }
 
 type player struct {
@@ -107,8 +155,8 @@ func (p *player) Queue(uri string) error {
 	return nil
 }
 
-func (p *player) Play(tracks trackList, offset int) error {
-	p.play <- playerContext{tracks, offset}
+func (p *player) Play(tracks trackList, index int) error {
+	p.play <- playerContext{tracks: tracks, index: index}
 	return nil
 }
 
@@ -135,20 +183,20 @@ func (p *player) loadTracks(ew EventsWriter) {
 			return
 		}
 
-		var next *spotify.Track
+		var next trackInfo
 		if !newCtx && len(queue) > 0 {
-			next = queue[0]
+			next = trackInfo{"queue-uid", queue[0]}
 			queue = queue[1:]
-		} else if ctx.tracks != nil {
+		} else {
 			var err error
-			index := ctx.offset % ctx.tracks.Len()
-			next, err = ctx.tracks.Get(index)
-			ctx.offset++
+			println("getting next")
+			next, err = ctx.Next()
 			if err != nil {
 				log.Error("Failed to fetch next track from context: %s", err.Error())
-				player.Pause()
-				player.Unload()
 				continue
+			}
+			if next.Track == nil {
+				player.Unload()
 			}
 		}
 
@@ -157,15 +205,20 @@ func (p *player) loadTracks(ew EventsWriter) {
 			queue = nil
 		}
 
-		if next != nil {
-			// TODO bubble any errors on up
-			if err := player.Load(next); err != nil {
+		if next.Track != nil {
+			if err := player.Load(next.Track); err != nil {
 				log.Error("Failed to load track: %s", err.Error())
-				ew.SendLink("play-track-failed", next.Link())
+				ew.SendEvent("play-track-failed", struct {
+					URI string `json:"uri"`
+				}{next.Track.Link().String()})
 				continue
 			}
 
-			ew.SendLink("play-track", next.Link())
+			ew.SendEvent("play-track", struct {
+				UID string `json:"uid"`
+				URI string `json:"uri"`
+			}{next.UID, next.Track.Link().String()})
+
 			player.Play()
 		}
 	}

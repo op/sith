@@ -1,0 +1,22 @@
+    <!-- Bottom navigation bar -->
+    <div style="position: fixed; bottom: 0; width: 100%; margin: 0; z-index: 10" class="navbar navbar-material-white">
+      <div class="navbar-header">
+        <img data-src="{{current.image}}" style="width: 60px; height: 60px" alt="Album Cover">
+      </div>
+
+      <div class="progress" style="margin: 0; padding: 0">
+        <div class="progress-bar progress-bar-material-purple" style="width: 20%"></div>
+      </div>
+
+      <div class="navbar-collapse collapse navbar-responsive-collapse">
+        <ul class="nav navbar-nav">
+          <li><a href="javascript:void(0)">{{current.name}}</a></li>
+        </ul>
+        <ul class="nav navbar-nav navbar-right">
+          <!-- <li><a href="javascript:void(0)"><i class="icon&#45;material&#45;skip&#45;previous"></i></a></li> -->
+          <li ng-show="!playing" ng-click="play()"><a href="javascript:void(0)"><i class="icon-material-play-arrow"></i></a></li>
+          <li ng-show="playing" ng-click="pause()"><a href="javascript:void(0)"><i class="icon-material-pause"></i></a></li>
+          <!-- <li><a href="javascript:void(0)"><i class="icon&#45;material&#45;skip&#45;next"></i></a></li> -->
+        </ul>
+      </div>
+    </div>

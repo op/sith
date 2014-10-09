@@ -1,28 +1,78 @@
-<div ng-controller="SearchCtrl">
-  <form>
-  <label>search</label>
-  <input type="text" required ng-model="query" ng-change="execute()" ng-minlength="1" ng-maxlength="256" placeholder="Search query" />
-  </form>
-  <hr>
-  <h1>Searching {{query}}!</h1>
-  <p><em>{{search.didyoumean}}</em></p>
+<form>
+<label>search</label>
+<input type="text" required ng-model="query" ng-change="execute()" ng-minlength="1" ng-maxlength="256" placeholder="Search query" />
+</form>
 
-  <h3>artists</h3>
-  <ul>
-    <li ng-repeat="artist in search.artists">
-      <p>{{artist.name}}</p>
-    </li>
-  </ul>
-  <h3>albums</h3>
-  <ul>
-    <li ng-repeat="album in search.albums">
-      <p>{{album.name}}</p>
-    </li>
-  </ul>
-  <h3>tracks</h3>
-  <ul>
-    <li ng-repeat="track in search.tracks">
-      <p><a ng-click="load(search.uri, $index, track.uri)">{{track.name}}</a></p>
-    </li>
+<div ng-show="search">
+
+  <div style="height: 3em; padding: 1em">
+    <p ng-show="search.didyoumean">Did you mean <em>{{search.didyoumean}}</em>?</p>
+  </div>
+
+  <div class="row">
+    <div class="col-md-6">
+      <h3>Artists</h3>
+      <div class="list-group">
+        <div ng-repeat="artist in search.artists">
+          <div class="list-group-item">
+            <div class="row-action-primary">
+              <i class="icon-material-folder"></i>
+            </div>
+            <div class="row-content">
+              <div class="least-content">{{artist.uri}}</div>
+              <h4 class="list-group-item-heading">Artist Name</h4>
+              <p class="list-group-item-text">{{artist.name}}</p>
+            </div>
+          </div>
+          <div class="list-group-separator"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <h3>Albums</h3>
+      <div class="list-group">
+        <div ng-repeat="album in search.albums">
+          <div class="list-group-item">
+            <div class="row-action-primary">
+              <i class="icon-material-folder"></i>
+            </div>
+            <div class="row-content">
+              <div class="least-content">{{album.uri}}</div>
+              <h4 class="list-group-item-heading">Artist Name</h4>
+              <p class="list-group-item-text">{{album.name}}</p>
+            </div>
+          </div>
+          <div class="list-group-separator"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Tracks</h3>
+  <table class="table table-striped table-hover ">
+    <thead>
+      <tr>
+        <th style="width: 5em;"></th>
+        <th>#</th>
+        <th>Column heading</th>
+        <th>Column heading</th>
+        <th>Column heading</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr ng-repeat="track in search.tracks" ng-click="load(search.uri, $index, track.uri)">
+        <td style="text-align: center;"><i class="icon icon-material-star-outline"></i></td>
+        <td>{{$index}}</td>
+        <td>{{track.name}}</td>
+        <td>Column content</td>
+        <td>Column content</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <ul class="pager">
+      <li class="previous disabled"><a href="javascript:void(0)">← Older</a></li>
+      <li class="next"><a href="javascript:void(0)">Newer →</a></li>
   </ul>
 </div>

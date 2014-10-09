@@ -1,9 +1,17 @@
-<div ng-controller="PlaylistsCtrl">
-  <h1>playlists</h1>
-  <hr>
-  <ol>
-    <li ng-repeat="playlist in playlists">
-    <p><a href="/#/user/{{playlist.owner}}/playlist/{{playlist.id}}">{{playlist.name}}</a></p>
-    </li>
-  </ol>
+<h1>Playlists</h1>
+<div class="list-group">
+  <div ng-repeat="playlist in playlists">
+    <div class="list-group-item">
+        <div class="row-action-primary">
+            <i class="icon-material-folder"></i>
+        </div>
+        <div class="row-content" ui-sref="playlist({username: playlist.owner, playlistId: playlist.id})">
+            <div class="least-content">{{playlist.owner}}</div>
+            <h4 class="list-group-item-heading">{{playlist.name}}</h4>
+            <!-- TODO support links without XSS -->
+            <p class="list-group-item-text">{{playlist.description}}</p>
+        </div>
+    </div>
+    <div class="list-group-separator"></div>
+  </div>
 </div>
