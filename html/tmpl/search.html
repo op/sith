@@ -1,10 +1,4 @@
-<form>
-<label>search</label>
-<input type="text" required ng-model="query" ng-change="execute()" ng-minlength="1" ng-maxlength="256" placeholder="Search query" />
-</form>
-
 <div ng-show="search">
-
   <div style="height: 3em; padding: 1em">
     <p ng-show="search.didyoumean">Did you mean <em>{{search.didyoumean}}</em>?</p>
   </div>
@@ -20,8 +14,8 @@
             </div>
             <div class="row-content">
               <div class="least-content">{{artist.uri}}</div>
-              <h4 class="list-group-item-heading">Artist Name</h4>
-              <p class="list-group-item-text">{{artist.name}}</p>
+              <h4 class="list-group-item-heading">{{artist.name}}</h4>
+              <p class="list-group-item-text"><!-- TODO put something here? --></p>
             </div>
           </div>
           <div class="list-group-separator"></div>
@@ -39,7 +33,7 @@
             </div>
             <div class="row-content">
               <div class="least-content">{{album.uri}}</div>
-              <h4 class="list-group-item-heading">Artist Name</h4>
+              <h4 class="list-group-item-heading">{{album.artist.name}}</h4>
               <p class="list-group-item-text">{{album.name}}</p>
             </div>
           </div>
@@ -55,18 +49,23 @@
       <tr>
         <th style="width: 5em;"></th>
         <th>#</th>
-        <th>Column heading</th>
-        <th>Column heading</th>
-        <th>Column heading</th>
+        <th>Name</th>
+        <th>Artist</th>
+        <th>Album</th>
       </tr>
     </thead>
     <tbody>
       <tr ng-repeat="track in search.tracks" ng-click="load(search.uri, $index, track.uri)">
         <td style="text-align: center;"><i class="icon icon-material-star-outline"></i></td>
-        <td>{{$index}}</td>
+        <td>{{$index+1}}</td>
         <td>{{track.name}}</td>
-        <td>Column content</td>
-        <td>Column content</td>
+        <td>
+          <span ng-repeat="artist in track.artists">
+            {{artist.name}}
+            <span ng-show="!$last">, </span>
+         </span>
+        </td>
+        <td>{{track.album.name}}</td>
       </tr>
     </tbody>
   </table>

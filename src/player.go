@@ -215,9 +215,9 @@ func (p *player) loadTracks(ew EventsWriter) {
 			}
 
 			ew.SendEvent("play-track", struct {
-				UID string `json:"uid"`
-				URI string `json:"uri"`
-			}{next.UID, next.Track.Link().String()})
+				UID   string `json:"uid"`
+				Track *Track `json:"track"`
+			}{next.UID, newTrack(next.Track)})
 
 			player.Play()
 		}

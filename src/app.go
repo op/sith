@@ -89,6 +89,19 @@ func (b *bridge) Stop() {
 func (b *bridge) processEvents() {
 	var stopping bool
 
+	// XXX hack
+	go func() {
+		var message = struct {
+			Msg string `json:"message"`
+		}{
+			"fooooooooo",
+		}
+		for {
+			b.ew.SendEvent("log", message)
+			time.Sleep(time.Second)
+		}
+	}()
+
 	var logLevels = map[spotify.LogLevel]string{
 		spotify.LogFatal:   "fatal",
 		spotify.LogError:   "error",
@@ -190,21 +203,62 @@ func (b *bridge) log(m *spotify.LogMessage) {
 }
 
 type Track struct {
-	URI  string `json:"uri"`
-	Name string `json:"name"`
+	URI        string          `json:"uri"`
+	Name       string          `json:"name"`
+	Duration   float64         `json:"duration"`
+	Popularity float64         `json:"popularity"`
+	Album      *SimpleAlbum    `json:"album"`
+	Artists    []*SimpleArtist `json:"artists"`
 }
 
 func newTrack(t *spotify.Track) *Track {
-	return &Track{t.Link().String(), t.Name()}
+	album := newSimpleAlbum(t.Album())
+	var artists []*SimpleArtist
+	for i := 0; i < t.Artists(); i++ {
+		artists = append(artists, newSimpleArtist(t.Artist(i)))
+	}
+	return &Track{
+		t.Link().String(),
+		t.Name(),
+		t.Duration().Seconds(),
+		float64(t.Popularity()) / 100.,
+		album,
+		artists,
+	}
 }
 
-type Album struct {
+type SimpleAlbum struct {
 	URI  string `json:"uri"`
 	Name string `json:"name"`
 }
 
+func newSimpleAlbum(a *spotify.Album) *SimpleAlbum {
+	return &SimpleAlbum{a.Link().String(), a.Name()}
+}
+
+type Album struct {
+	URI    string        `json:"uri"`
+	Name   string        `json:"name"`
+	Year   int           `json:"year"`
+	Artist *SimpleArtist `json:"artist"`
+}
+
 func newAlbum(a *spotify.Album) *Album {
-	return &Album{a.Link().String(), a.Name()}
+	return &Album{
+		a.Link().String(),
+		a.Name(),
+		a.Year(),
+		newSimpleArtist(a.Artist()),
+	}
+}
+
+type SimpleArtist struct {
+	URI  string `json:"uri"`
+	Name string `json:"name"`
+}
+
+func newSimpleArtist(a *spotify.Artist) *SimpleArtist {
+	return &SimpleArtist{a.Link().String(), a.Name()}
 }
 
 type Artist struct {
@@ -224,15 +278,14 @@ type Playlist struct {
 	Collaborative bool             `json:"collaborative"`
 	Subscribers   int              `json:"subscribers"`
 	Owner         string           `json:"owner"`
-	Tracks        []*PlaylistTrack `json:"tracks"`
+	Items         []*PlaylistTrack `json:"items"`
 }
 
 type PlaylistTrack struct {
-	UID  string `json:"uid"`
-	URI  string `json:"uri"`
-	Name string `json:"name"`
-	User string `json:"user"`
-	Time string `json:"time"`
+	UID   string `json:"uid"`
+	User  string `json:"user"`
+	Time  string `json:"time"`
+	Track *Track `json:"track"`
 }
 
 func timeStr(t time.Time) string {
@@ -240,13 +293,12 @@ func timeStr(t time.Time) string {
 }
 
 func newPlaylistTrack(pt *spotify.PlaylistTrack) *PlaylistTrack {
-	t := pt.Track()
+	track := newTrack(pt.Track())
 	return &PlaylistTrack{
 		playlistTrackUID(pt),
-		t.Link().String(),
-		t.Name(),
 		pt.User().CanonicalName(),
 		timeStr(pt.Time()),
+		track,
 	}
 }
 
@@ -506,7 +558,7 @@ func (a *application) playlist(bridge *bridge, enc encoder.Encoder, args playlis
 
 	for i := args.Offset(); i < playlist.Tracks() && i < args.OffLimit(); i++ {
 		pt := playlist.Track(i)
-		r.Playlist.Tracks = append(r.Playlist.Tracks, newPlaylistTrack(pt))
+		r.Playlist.Items = append(r.Playlist.Items, newPlaylistTrack(pt))
 	}
 
 	return http.StatusOK, encoder.Must(enc.Encode(r))

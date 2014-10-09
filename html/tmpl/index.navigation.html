@@ -1,0 +1,30 @@
+<div style="position: fixed; top: 0; width: 100%; z-index: 10" class="navbar navbar-material-brown">
+  <div class="navbar-header">
+    <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-responsive-collapse">
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </button>
+    <a class="navbar-brand" ui-sref="index">sith</a>
+  </div>
+
+  <div class="navbar-collapse collapse navbar-responsive-collapse">
+    <ul class="nav navbar-nav">
+      <li><a ui-sref="search">Search</a></li>
+      <li><a ui-sref="playlists">Playlists</a></li>
+    </ul>
+
+    <ul class="nav navbar-nav navbar-right">
+      <li class="dropdown">
+      <a href="javascript:void(0)" class="dropdown-toggle" data-toggle="dropdown">User <b class="caret"></b></a>
+      <ul class="dropdown-menu">
+        <li><a href="javascript:void(0)">Settings</a></li>
+        <li><a ui-sref="log">Logs</a></li>
+        <li class="divider"></li>
+        <li class="dropdown-header">Session</li>
+        <li><a href="javascript:void(0)">Logout</a></li>
+      </ul>
+      </li>
+    </ul>
+  </div>
+</div>

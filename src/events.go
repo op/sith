@@ -36,6 +36,8 @@ type EventsWriter struct {
 	sequenceId int
 }
 
+// TODO this should not be kept here?
+
 func NewEventsWriter() EventsWriter {
 	esSettings := eventsource.Settings{
 		CloseOnTimeout: false,

@@ -10,19 +10,24 @@
     <tr>
       <th></th>
       <th>#</th>
-      <th>Track</th>
-      <th>Column heading</th>
-      <th>Column heading</th>
+      <th>Name</th>
+      <th>Artist</th>
+      <th>Album</th>
     </tr>
   </thead>
   <tbody>
     <!-- TODO add class active to tr that is selected -->
-    <tr ng-repeat="track in playlist.tracks" ng-click="load(playlist.uri, $index, track.uri)">
+    <tr ng-repeat="item in playlist.items" ng-click="load(playlist.uri, $index, item.track.uri)">
       <td style="text-align: center"><i class="icon icon-material-star-outline"></i></td>
       <td>{{$index+1}}</td>
-      <td>{{track.name}}</td>
-      <td>Column content</td>
-      <td>Column content</td>
+      <td>{{item.track.name}}</td>
+      <td>
+        <span ng-repeat="artist in item.track.artists">
+          {{artist.name}}
+          <span ng-show="!$last">, </span>
+        </span>
+      </td>
+      <td>{{item.track.album.name}}</td>
     </tr>
   </tbody>
 </table>
