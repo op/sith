@@ -89,19 +89,6 @@ func (b *bridge) Stop() {
 func (b *bridge) processEvents() {
 	var stopping bool
 
-	// XXX hack
-	go func() {
-		var message = struct {
-			Msg string `json:"message"`
-		}{
-			"fooooooooo",
-		}
-		for {
-			b.ew.SendEvent("log", message)
-			time.Sleep(time.Second)
-		}
-	}()
-
 	var logLevels = map[spotify.LogLevel]string{
 		spotify.LogFatal:   "fatal",
 		spotify.LogError:   "error",

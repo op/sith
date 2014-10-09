@@ -6,7 +6,7 @@ ctrls.controller('sith.ctrl.player', function($scope, $http, $interval) {
   $scope.context = true;
   $scope.current = {name: "", duration: 0, image: "holder.js/60x60"}
   $scope.playing = false;
-  $scope.progress = 20;
+  $scope.progress = 0;
 
   // offset is the numbers of seconds into the current playing track.
   $scope.offset = 0.0;
