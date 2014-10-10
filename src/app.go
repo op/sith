@@ -224,17 +224,28 @@ func newSimpleAlbum(a *spotify.Album) *SimpleAlbum {
 }
 
 type Album struct {
-	URI    string        `json:"uri"`
-	Name   string        `json:"name"`
-	Year   int           `json:"year"`
-	Artist *SimpleArtist `json:"artist"`
+	Id       string        `json:"id"`
+	URI      string        `json:"uri"`
+	Name     string        `json:"name"`
+	Year     int           `json:"year"`
+	HasImage bool          `json:"has_image"`
+	Artist   *SimpleArtist `json:"artist"`
 }
 
 func newAlbum(a *spotify.Album) *Album {
+	// TODO do this in javascript, don't expose the "id"
+	uri := a.Link().String()
+	id := uri[strings.LastIndex(uri, ":")+1:]
+	hasImage := false
+	if _, err := a.Cover(spotify.ImageSizeSmall); err == nil {
+		hasImage = true
+	}
 	return &Album{
+		id,
 		a.Link().String(),
 		a.Name(),
 		a.Year(),
+		hasImage,
 		newSimpleArtist(a.Artist()),
 	}
 }
@@ -249,12 +260,26 @@ func newSimpleArtist(a *spotify.Artist) *SimpleArtist {
 }
 
 type Artist struct {
-	URI  string `json:"uri"`
-	Name string `json:"name"`
+	Id       string `json:"id"`
+	URI      string `json:"uri"`
+	Name     string `json:"name"`
+	HasImage bool   `json:"has_image"`
 }
 
 func newArtist(a *spotify.Artist) *Artist {
-	return &Artist{a.Link().String(), a.Name()}
+	// TODO do this in javascript, don't expose the "id"
+	uri := a.Link().String()
+	id := uri[strings.LastIndex(uri, ":")+1:]
+	hasImage := false
+	if _, err := a.Portrait(spotify.ImageSizeSmall); err == nil {
+		hasImage = true
+	}
+	return &Artist{
+		id,
+		a.Link().String(),
+		a.Name(),
+		hasImage,
+	}
 }
 
 type Playlist struct {
@@ -265,6 +290,7 @@ type Playlist struct {
 	Collaborative bool             `json:"collaborative"`
 	Subscribers   int              `json:"subscribers"`
 	Owner         string           `json:"owner"`
+	HasImage      bool             `json:"has_image"`
 	Items         []*PlaylistTrack `json:"items"`
 }
 
@@ -297,6 +323,12 @@ func newPlaylist(p *spotify.Playlist) *Playlist {
 	// TODO handle error
 	owner, _ := p.Owner()
 
+	// TODO make it possible to create link from image
+	hasImage := false
+	if _, err := p.Image(); err == nil {
+		hasImage = true
+	}
+
 	return &Playlist{
 		id,
 		p.Link().String(),
@@ -305,6 +337,7 @@ func newPlaylist(p *spotify.Playlist) *Playlist {
 		p.Collaborative(),
 		p.NumSubscribers(),
 		owner.CanonicalName(),
+		hasImage,
 		nil,
 	}
 }
@@ -488,6 +521,74 @@ func (a *application) playlists(bridge *bridge, enc encoder.Encoder, args playli
 	return http.StatusOK, encoder.Must(enc.Encode(r))
 }
 
+func (a *application) image(w http.ResponseWriter, bridge *bridge, params martini.Params) (int, []byte) {
+	entity := params["entity"]
+	user := params["user"]
+	id := params["id"]
+
+	// TODO just use the raw uri and don't do any processing
+	var uri string
+	if entity == "playlist" {
+		uri = fmt.Sprintf("spotify:user:%s:playlist:%s", user, id)
+	} else {
+		uri = fmt.Sprintf("spotify:%s:%s", entity, id)
+	}
+
+	link, err := bridge.sess.ParseLink(uri)
+	if err != nil {
+		log.Info(err.Error())
+		return http.StatusInternalServerError, nil
+	}
+	var image *spotify.Image
+	switch link.Type() {
+	case spotify.LinkTypePlaylist:
+		playlist, err := link.Playlist()
+		if err != nil {
+			log.Info(err.Error())
+			return http.StatusInternalServerError, nil
+		}
+		playlist.Wait()
+		image, err = playlist.Image()
+		if err != nil {
+			return http.StatusInternalServerError, nil
+		}
+	case spotify.LinkTypeAlbum:
+		album, err := link.Album()
+		if err != nil {
+			log.Info(err.Error())
+			return http.StatusInternalServerError, nil
+		}
+		album.Wait()
+		image, err = album.Cover(spotify.ImageSizeSmall)
+		if err != nil {
+			return http.StatusInternalServerError, nil
+		}
+	case spotify.LinkTypeArtist:
+		artist, err := link.Artist()
+		if err != nil {
+			log.Info(err.Error())
+			return http.StatusInternalServerError, nil
+		}
+		artist.Wait()
+		image, err = artist.Portrait(spotify.ImageSizeSmall)
+		if err != nil {
+			return http.StatusInternalServerError, nil
+		}
+	default:
+		log.Error("Unknown link type: %s: %s", link.Type(), link.String())
+		return http.StatusBadRequest, nil
+	}
+
+	image.Wait()
+	switch image.Format() {
+	case spotify.ImageFormatJpeg:
+		w.Header().Set("Content-Type", "application/jpeg")
+	default:
+		return http.StatusInternalServerError, nil
+	}
+	return http.StatusOK, image.Data()
+}
+
 type playlistArgs struct {
 	RawPage  int `form:"page" json:"page"`
 	RawLimit int `form:"limit" json:"limit"`
@@ -519,7 +620,6 @@ func (pa playlistArgs) OffLimit() int {
 func (a *application) playlist(bridge *bridge, enc encoder.Encoder, args playlistArgs, params martini.Params) (int, []byte) {
 	bridge.sync()
 
-	// TODO unescape?
 	user := params["user"]
 	id := params["id"]
 	uri := fmt.Sprintf("spotify:user:%s:playlist:%s", user, id)

@@ -10,7 +10,8 @@
         <div ng-repeat="artist in search.artists">
           <div class="list-group-item">
             <div class="row-action-primary">
-              <i class="icon-material-folder"></i>
+              <i ng-show="!artist.has_image" class="icon-material-folder"></i>
+              <img ng-show="artist.has_image" src="/image/artist/{{artist.id}}">
             </div>
             <div class="row-content">
               <div class="least-content">{{artist.uri}}</div>
@@ -29,7 +30,8 @@
         <div ng-repeat="album in search.albums">
           <div class="list-group-item">
             <div class="row-action-primary">
-              <i class="icon-material-folder"></i>
+              <i ng-show="!album.has_image" class="icon-material-folder"></i>
+              <img ng-show="album.has_image" src="/image/album/{{album.id}}">
             </div>
             <div class="row-content">
               <div class="least-content">{{album.uri}}</div>

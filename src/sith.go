@@ -84,6 +84,8 @@ func Run() {
 	router.Get("/search", binding.Bind(searchArgs{}), app.search)
 	router.Get("/playlists", binding.Bind(playlistsArgs{}), app.playlists)
 	router.Get("/user/:username/playlist/:id", binding.Bind(playlistArgs{}), app.playlist)
+	router.Get("/image/user/:username/:entity/:id", app.image)
+	router.Get("/image/:entity/:id", app.image)
 	router.Get("/player/play", app.play)
 	router.Get("/player/pause", app.pause)
 	router.Get("/player/load", binding.Bind(loadArgs{}), app.load)
