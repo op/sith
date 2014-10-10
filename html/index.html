@@ -21,7 +21,8 @@
 
     <div ng-controller="sith.ctrl.player" style="position: fixed; bottom: 0; width: 100%; margin: 0; z-index: 10" class="navbar navbar-material-white">
       <div class="navbar-header">
-        <img data-src="{{current.image}}" style="width: 60px; height: 60px" alt="Album Cover">
+        <img ng-show="!current.album.has_image" src="holder.js/60x60" style="width: 60px; height: 60px" alt="Album Cover">
+        <img ng-show="current.album.has_image" src="/image/album/{{current.album.id}}" style="width: 60px; height: 60px" alt="Album Cover">
       </div>
 
       <div class="progress" style="margin: 0; padding: 0">
@@ -30,8 +31,13 @@
 
       <div class="navbar-collapse collapse navbar-responsive-collapse">
         <ul class="nav navbar-nav">
-          <li><a href="javascript:void(0)">{{current.name}}</a></li>
-        </ul>
+          <li><a href="javascript:void(0)">
+          <span ng-repeat="artist in current.artists">
+            {{artist.name}}
+            <span ng-show="!$last">, </span>
+            - {{current.name}}
+          </a></li>
+          </ul>
         <ul class="nav navbar-nav navbar-right">
           <li ng-show="!playing" ng-click="play()"><a href="javascript:void(0)"><i class="icon-material-play-arrow"></i></a></li>
           <li ng-show="playing" ng-click="pause()"><a href="javascript:void(0)"><i class="icon-material-pause"></i></a></li>

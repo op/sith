@@ -215,12 +215,20 @@ func newTrack(t *spotify.Track) *Track {
 }
 
 type SimpleAlbum struct {
-	URI  string `json:"uri"`
-	Name string `json:"name"`
+	Id       string `json:"id"`
+	URI      string `json:"uri"`
+	Name     string `json:"name"`
+	HasImage bool   `json:"has_image"`
 }
 
 func newSimpleAlbum(a *spotify.Album) *SimpleAlbum {
-	return &SimpleAlbum{a.Link().String(), a.Name()}
+	uri := a.Link().String()
+	id := uri[strings.LastIndex(uri, ":")+1:]
+	hasImage := false
+	if _, err := a.Cover(spotify.ImageSizeSmall); err == nil {
+		hasImage = true
+	}
+	return &SimpleAlbum{id, a.Link().String(), a.Name(), hasImage}
 }
 
 type Album struct {

@@ -4,7 +4,7 @@ var ctrls = angular.module('sith.controllers', []);
 ctrls.controller('sith.ctrl.player', function($scope, $http, $interval) {
   // TODO update from other events
   $scope.context = true;
-  $scope.current = {name: "", duration: 0, image: "holder.js/60x60"}
+  $scope.current = {name: "", duration: 0, has_image: false}
   $scope.playing = false;
   $scope.progress = 0;
 
@@ -43,8 +43,7 @@ ctrls.controller('sith.ctrl.player', function($scope, $http, $interval) {
     if (playTokenSnackbar) {
       playTokenSnackbar.snackbar("hide");
     }
-    $scope.current.name = playing.track.name;
-    $scope.current.duration = playing.track.duration;
+    $scope.current = playing.track;
     $scope.playing = true;
   });
 
